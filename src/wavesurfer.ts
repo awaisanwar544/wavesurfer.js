@@ -434,7 +434,7 @@ class WaveSurfer extends Player<WaveSurferEvents> {
             }
         } catch (error) {
             console.error('Error fetching audio blob:', error);
-            this.emit('error', error);
+            this.emit('error', error as Error);
             return;
         }
     }
