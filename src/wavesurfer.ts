@@ -407,61 +407,77 @@ class WaveSurfer extends Player<WaveSurferEvents> {
   }
 
   private async loadAudio(url: string, blob?: Blob, channelData?: WaveSurferOptions['peaks'], duration?: number) {
-    this.emit('load', url)
+    this.emit('load', url);
 
-    if (!this.options.media && this.isPlaying()) this.pause()
+    if (!this.options.media && this.isPlaying()) this.pause();
 
-    this.decodedData = null
+    this.decodedData = null;
 
     // Fetch the entire audio as a blob if pre-decoded data is not provided
     if (!blob && !channelData) {
-      const fetchParams = this.options.fetchParams || {}
-      if (window.AbortController && !fetchParams.signal) {
-        this.abortController = new AbortController()
-        fetchParams.signal = this.abortController?.signal
-      }
-      const onProgress = (percentage: number) => this.emit('loading', percentage)
-      blob = await Fetcher.fetchBlob(url, onProgress, fetchParams)
+        const fetchParams = this.options.fetchParams || {};
+        if (window.AbortController && !fetchParams.signal) {
+            this.abortController = new AbortController();
+            fetchParams.signal = this.abortController?.signal;
+        }
+        const onProgress = (percentage: number) => this.emit('loading', percentage);
+        
+        try {
+            // Use Fetch API directly to handle Safari issues
+            const response = await fetch(url, fetchParams);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch audio from ${url}`);
+            }
+            blob = await response.blob();
+            if (blob.size === 0) {
+                throw new Error('Received an empty blob');
+            }
+        } catch (error) {
+            console.error('Error fetching audio blob:', error);
+            this.emit('error', error);
+            return;
+        }
     }
 
     // Set the mediaelement source
-    this.setSrc(url, blob)
+    this.setSrc(url, blob);
 
     // Wait for the audio duration
     const audioDuration = await new Promise<number>((resolve) => {
-      const staticDuration = duration || this.getDuration()
-      if (staticDuration) {
-        resolve(staticDuration)
-      } else {
-        this.mediaSubscriptions.push(
-          this.onMediaEvent('loadedmetadata', () => resolve(this.getDuration()), { once: true }),
-        )
-      }
-    })
+        const staticDuration = duration || this.getDuration();
+        if (staticDuration) {
+            resolve(staticDuration);
+        } else {
+            this.mediaSubscriptions.push(
+                this.onMediaEvent('loadedmetadata', () => resolve(this.getDuration()), { once: true })
+            );
+        }
+    });
 
     // Set the duration if the player is a WebAudioPlayer without a URL
     if (!url && !blob) {
-      const media = this.getMediaElement()
-      if (media instanceof WebAudioPlayer) {
-        media.duration = audioDuration
-      }
+        const media = this.getMediaElement();
+        if (media instanceof WebAudioPlayer) {
+            media.duration = audioDuration;
+        }
     }
 
     // Decode the audio data or use user-provided peaks
     if (channelData) {
-      this.decodedData = Decoder.createBuffer(channelData, audioDuration || 0)
+        this.decodedData = Decoder.createBuffer(channelData, audioDuration || 0);
     } else if (blob) {
-      const arrayBuffer = await blob.arrayBuffer()
-      this.decodedData = await Decoder.decode(arrayBuffer, this.options.sampleRate)
+        const arrayBuffer = await blob.arrayBuffer();
+        this.decodedData = await Decoder.decode(arrayBuffer, this.options.sampleRate);
     }
 
     if (this.decodedData) {
-      this.emit('decode', this.getDuration())
-      this.renderer.render(this.decodedData)
+        this.emit('decode', this.getDuration());
+        this.renderer.render(this.decodedData);
     }
 
-    this.emit('ready', this.getDuration())
-  }
+    this.emit('ready', this.getDuration());
+}
+
 
   /** Load an audio file by URL, with optional pre-decoded audio data */
   public async load(url: string, channelData?: WaveSurferOptions['peaks'], duration?: number) {
